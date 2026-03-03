@@ -132,15 +132,18 @@ void *ai_record_thread(void *arg) {
                 // --- HARDWARE STALL FIX: Use non-blocking MSG_DONTWAIT ---
                 ssize_t wr_sock = send(current->sockfd, stAiChFrame.apVirAddr[0], stAiChFrame.u32Len, MSG_DONTWAIT);
                 
-                if (wr_sock < 0) {
-                    if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                        // Client is reading too slowly. Buffer is full.
-                        // Drop this frame for this client to prevent halting the SigmaStar DMA.
+                // --- AUDIO CORRUPTION FIX: Catch partial sends to prevent byte-shifting ---
+                if (wr_sock < 0 || wr_sock != stAiChFrame.u32Len) {
+                    
+                    if (wr_sock < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+                        // Buffer is full. Drop this frame.
                         current = current->next;
                         continue;
                     }
                     
-                    if (errno == EPIPE || errno == ECONNRESET) {
+                    if (wr_sock >= 0 && wr_sock != stAiChFrame.u32Len) {
+                        printf("[WARN] Partial PCM send (%zd bytes). Stream misaligned. Kicking client.\n", wr_sock);
+                    } else if (errno == EPIPE || errno == ECONNRESET) {
                         printf("[INFO] Client disconnected\n");
                     } else {
                         handle_audio_error("AI: send to sockfd");
@@ -166,6 +169,7 @@ void *ai_record_thread(void *arg) {
                 }
                 current = current->next;
             }
+            
             pthread_mutex_unlock(&client_list_lock);
             MI_AI_ReleaseFrame(aiDevID, aiChnID, &stAiChFrame, &stAecFrame);
         } else {
