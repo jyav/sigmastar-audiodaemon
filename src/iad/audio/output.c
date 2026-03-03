@@ -202,6 +202,12 @@ int disable_audio_output() {
     int mute_status = 0;
     mute_audio_output_device(mute_status);
 
+    ret = MI_AO_DisableVqe(aoDevID, aoChnID);
+    if (ret != 0) {
+        printf("[ERROR] [%s] SigmaStar audio Vqe disable error\n", TAG);
+        return -1;
+    }
+    
     ret = MI_AO_DisableChn(aoDevID, aoChnID);
     if (ret != 0) {
         printf("[ERROR] [%s] SigmaStar audio channel disable error\n", TAG);
