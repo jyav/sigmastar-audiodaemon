@@ -78,6 +78,10 @@ void *audio_input_server_thread(void *arg) {
     addr.sun_path[sizeof(addr.sun_path) - 1] = '\0';
 
     printf("[INFO] [AI] Attempting to bind socket\n");
+    
+    // --- FATAL RESTART FIX: Remove orphaned socket files from previous crashes ---
+    unlink(addr.sun_path);
+    
     if (bind(sockfd, (struct sockaddr*)&addr, sizeof(sa_family_t) + strlen(AUDIO_INPUT_SOCKET_PATH) + 1) == -1) {
         handle_audio_error(TAG, "bind failed");
         close(sockfd);
