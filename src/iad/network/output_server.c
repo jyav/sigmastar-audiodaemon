@@ -84,6 +84,12 @@ printf("[INFO] [AO] Waiting for output client connection\n");
             continue;
         }
 
+		// --- NETWORK DEADLOCK FIX: Set a 1-second receive timeout ---
+        struct timeval tv_rcv;
+        tv_rcv.tv_sec = 1;
+        tv_rcv.tv_usec = 0;
+        setsockopt(client_sock, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv_rcv, sizeof(tv_rcv));
+
         pthread_mutex_lock(&audio_buffer_lock);
         while (active_client_sock != -1) {
             pthread_cond_wait(&audio_data_cond, &audio_buffer_lock);
@@ -111,14 +117,28 @@ printf("[INFO] [AO] Waiting for output client connection\n");
 
         printf("[INFO] [AO] Receiving audio data from client\n");
 		
-		// --- FATAL CONFLICT FIX: MSG_WAITALL added to prevent DMA starvation ---
-        // Using recv() with MSG_WAITALL guarantees we only wake up when we have 
-        // a perfect 2048-byte chunk for the SigmaStar MI_AO_SendFrame.
-        while ((read_size = recv(client_sock, buf, sizeof(buf), MSG_WAITALL)) > 0) {
+		// --- MSG_WAITALL TIMEOUT HANDLING ---
+        while (1) {
+            read_size = recv(client_sock, buf, sizeof(buf), MSG_WAITALL);
             
-            // If the client drops mid-frame, recv might return a partial frame.
-            // We only send perfectly sized frames to the hardware to prevent static/chipmunking.
-            if (read_size != sizeof(buf)) {
+            if (read_size < 0) {
+                if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                    // Timeout hit. Check if we need to shut down.
+                    int stop = 0;
+                    pthread_mutex_lock(&g_stop_thread_mutex);
+                    stop = g_stop_thread;
+                    pthread_mutex_unlock(&g_stop_thread_mutex);
+                    if (stop) break;
+                    
+                    continue; // No shutdown requested, keep waiting for data
+                } else {
+                    handle_audio_error(TAG, "recv error");
+                    break;
+                }
+            } else if (read_size == 0) {
+                // Client gracefully disconnected
+                break;
+            } else if (read_size != sizeof(buf)) {
                 printf("[WARN] [AO] Partial frame received (%zd bytes). Discarding to protect DMA.\n", read_size);
                 break;
             }
