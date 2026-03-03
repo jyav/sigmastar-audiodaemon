@@ -1,90 +1,59 @@
 /*
- * INGENIC AUDIO DAEMON
+ * INGENIC AUDIO DAEMON (SigmaStar Port)
  *
- * This daemon manages audio input and output for the Ingenic Tomahawk class devices.
+ * This daemon manages audio input and output for SigmaStar devices.
  */
 
 #if !defined(__UCLIBC__) && !defined(__GLIBC__)
-#include <bits/signal.h>             // Signal definitions
+#include <bits/signal.h>             
 #endif
-#include <signal.h>                  // Signal handling functions
-#include <stdio.h>                   // Standard I/O functions
+
+#include <signal.h>                  
+#include <stdio.h>                   
 #include <stdlib.h>
-#include <pthread.h>                 // Multithreading functions
+#include <pthread.h>                 
+
 #include "mi_sys.h"
 #include "iad.h"
-#include "network/input_server.h"    // Audio input server functions
-#include "network/output_server.h"   // Audio output server functions
-#include "network/control_server.h"  // Audio control server functions
-#include "audio/output.h"            // Audio output functions
-#include "utils/cmdline.h"           // Command-line argument parsing
-#include "utils/config.h"            // Configuration file handling
-#include "utils/utils.h"             // Utility functions
-#include "utils/logging.h"           // Logging functions
-#include "version.h"                 // Version information
+#include "network/input_server.h"    
+#include "network/output_server.h"   
+#include "network/control_server.h"  
+#include "audio/output.h"            
+#include "utils/cmdline.h"           
+#include "utils/config.h"            
+#include "utils/utils.h"             
+#include "utils/logging.h"           
+#include "version.h"                 
 
 #define TAG "IAD"
 
-/**
- * @brief Main function for the Ingenic Audio Daemon.
- *
- * This is the entry point of the daemon. It initializes the audio system,
- * sets up networking, and manages the main execution loop.
- *
- * @param argc Number of command-line arguments.
- * @param argv Array of command-line arguments.
- * @return int Returns 0 on successful execution, non-zero otherwise.
- */
 int main(int argc, char *argv[]) {
     printf("INGENIC AUDIO DAEMON Version: %s\n", VERSION);
 
-    // Parse and store command-line arguments
+    // 1. Parse command-line arguments
     CmdOptions options;
     if (parse_cmdline(argc, argv, &options)) {
-        return 1; // Exit on command line parsing error
+        return 1;
     }
 
-    // Check to see if daemonize was requested
     if (options.daemonize) {
         daemonize();
     }
 
-    // Ensure only one instance of the daemon is running
     if (is_already_running()) {
         exit(1);
     }
 
-    // Set up signal handling for graceful termination
     setup_signal_handling();
-
-    // Ignore the SIGPIPE signal to prevent unexpected program termination
     signal(SIGPIPE, SIG_IGN);
 
-    printf("[INFO] Starting audio daemon\n");
-    // --- SIGMASTAR INITIALIZATION ADDED ---
-    if (MI_SYS_Init() != 0) {
-        printf("[FATAL] Failed to initialize SigmaStar MI_SYS memory pool.\n");
-        exit(EXIT_FAILURE);
-    }
-
-    // --- STRICT SEQUENTIAL HARDWARE BOOT ---
-    // 1. Bring up the Speaker (so the reference channel exists)
-    int aoDev, aoChn, aiDev, aiChn;
-    get_audio_output_device_attributes(&aoDev, &aoChn);
-    initialize_audio_output_device(aoDev, aoChn);
-
-    // 2. Bring up the Microphone (so AEC can bind to the Speaker)
-    get_audio_input_device_attributes(&aiDev, &aiChn);
-    initialize_audio_input_device(aiDev, aiChn);
-
-    // 3. NOW it is safe to spawn the network threads
-    // ... (pthread_create for server threads)
-
+    // 2. LOAD CONFIGURATION FIRST
+    // We must load JSON before touching any hardware, as the hardware 
+    // initialization routines depend on the parsed attributes.
     char *config_file_path = options.config_file_path;
     int disable_ai = options.disable_ai;
     int disable_ao = options.disable_ao;
 
-    // Load and validate the audio configuration from the specified file
     if (config_load_from_file(config_file_path) == 0) {
         if (!validate_json(get_audio_config())) {
             handle_audio_error("Invalid configuration format. Continuing with default settings.", config_file_path);
@@ -93,59 +62,67 @@ int main(int argc, char *argv[]) {
         handle_audio_error("Failed to load configuration. Continuing with default settings. File", config_file_path);
     }
 
-    /* Debug only
-    cJSON *loaded_config = get_audio_config();
-    printf("Loaded JSON: %s\n", cJSON_Print(loaded_config));
-    */
-
-    // Determine whether to enable audio input/output based on configuration
+    // Determine final AI/AO states based on overrides
     if (!disable_ai) {
         disable_ai = !config_get_ai_enabled();
     }
-
     if (!disable_ao) {
         disable_ao = !config_get_ao_enabled();
     }
 
+    // 3. MASTER SIGMASTAR INITIALIZATION
+    printf("[INFO] Starting audio daemon\n");
+    if (MI_SYS_Init() != 0) {
+        printf("[FATAL] Failed to initialize SigmaStar MI_SYS memory pool.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    // 4. STRICT SEQUENTIAL HARDWARE BOOT
+    int aoDev, aoChn, aiDev, aiChn;
+
+    if (!disable_ao) {
+        // Bring up the Speaker (Creates the AEC reference channel)
+        get_audio_output_device_attributes(&aoDev, &aoChn);
+        initialize_audio_output_device(aoDev, aoChn);
+    }
+
+    if (!disable_ai) {
+        // Bring up the Microphone
+        get_audio_input_device_attributes(&aiDev, &aiChn);
+        initialize_audio_input_device(aiDev, aiChn);
+    }
+
+    // 5. SPAWN NETWORK & PLAYBACK THREADS
     pthread_t control_server_thread, input_server_thread, output_server_thread, play_thread_id;
 
-    // Launch the control server thread
     if (create_thread(&control_server_thread, audio_control_server_thread, NULL)) {
         return 1;
     }
 
-    // Launch the audio input server thread (if audio input is enabled)
     if (!disable_ai) {
         if (create_thread(&input_server_thread, audio_input_server_thread, NULL)) {
             return 1;
         }
     }
 
-    // Launch the audio output server thread (if audio output is enabled)
     if (!disable_ao) {
         if (create_thread(&output_server_thread, audio_output_server_thread, NULL)) {
             return 1;
         }
-    }
-
-    // Launch the audio playback thread (if audio output is enabled)
-    if (!disable_ao) {
         if (create_thread(&play_thread_id, ao_play_thread, NULL)) {
             return 1;
         }
     }
 
-    // Wait for all launched threads to complete their execution
+    // 6. WAIT FOR COMPLETION
     pthread_join(control_server_thread, NULL);
-
     if (!disable_ai) {
         pthread_join(input_server_thread, NULL);
     }
-
     if (!disable_ao) {
         pthread_join(output_server_thread, NULL);
         pthread_join(play_thread_id, NULL);
     }
 
-    return 0; // Successful termination
+    return 0;
 }
