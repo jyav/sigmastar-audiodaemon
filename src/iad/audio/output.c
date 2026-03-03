@@ -156,14 +156,18 @@ void *ao_play_thread(void *arg) {
 
     while (TRUE) {
         pthread_mutex_lock(&audio_buffer_lock);
+        
+        // --- PHANTOM WAKEUP FIX: Thread must break out of the while loop if shutting down ---
+        while (audio_buffer_size == 0 && !g_stop_thread) {
+            pthread_cond_wait(&audio_data_cond, &audio_buffer_lock);
+        }
 
-        while (audio_buffer_size == 0) {
-            pthread_mutex_lock(&g_stop_thread_mutex);
-            if (g_stop_thread) {
-                pthread_mutex_unlock(&audio_buffer_lock);
-                pthread_mutex_unlock(&g_stop_thread_mutex);
-                return NULL;
-            }
+        // If the thread was woken up by a shutdown broadcast, release the lock and exit
+        if (g_stop_thread) {
+            pthread_mutex_unlock(&audio_buffer_lock);
+            break;
+        }
+
             pthread_mutex_unlock(&g_stop_thread_mutex);
 
             pthread_cond_wait(&audio_data_cond, &audio_buffer_lock);
