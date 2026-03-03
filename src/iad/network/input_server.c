@@ -63,6 +63,14 @@ void *audio_input_server_thread(void *arg) {
     int aiDevID, aiChnID;
     get_audio_input_device_attributes(&aiDevID, &aiChnID);
 
+    update_socket_paths_from_config();
+
+    int sockfd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (sockfd < 0) {
+        handle_audio_error(TAG, "socket");
+        return NULL;
+    }
+
     /*
     if (initialize_audio_input_device(aiDevID, aiChnID) != 0) {
         f(stderr, "[ERROR] Failed to initialize audio input device\n");
