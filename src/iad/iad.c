@@ -95,22 +95,30 @@ int main(int argc, char *argv[]) {
     // 5. SPAWN NETWORK & PLAYBACK THREADS
     pthread_t control_server_thread, input_server_thread, output_server_thread, play_thread_id;
     int exit_code = 0;
-    
+
     // Tracking flags to prevent joining uninitialized threads
     int control_up = 0, input_up = 0, output_up = 0, play_up = 0;
 
-    // --- RESOURCE LEAK & RACE CONDITION FIX ---
+    // --- BOOT DEADLOCK FIX: Signal threads to abort if a sibling fails to spawn ---
+    #define ABORT_STARTUP() do { \
+        pthread_mutex_lock(&g_stop_thread_mutex); \
+        g_stop_thread = 1; \
+        pthread_mutex_unlock(&g_stop_thread_mutex); \
+        exit_code = 1; \
+        goto join_threads; \
+    } while(0)
+
     if (create_thread(&control_server_thread, audio_control_server_thread, NULL) == 0) {
         control_up = 1;
     } else {
-        exit_code = 1; goto join_threads;
+        ABORT_STARTUP();
     }
 
     if (!disable_ai) {
         if (create_thread(&input_server_thread, audio_input_server_thread, NULL) == 0) {
             input_up = 1;
         } else {
-            exit_code = 1; goto join_threads;
+            ABORT_STARTUP();
         }
     }
 
@@ -118,12 +126,12 @@ int main(int argc, char *argv[]) {
         if (create_thread(&output_server_thread, audio_output_server_thread, NULL) == 0) {
             output_up = 1;
         } else {
-            exit_code = 1; goto join_threads;
+            ABORT_STARTUP();
         }
         if (create_thread(&play_thread_id, ao_play_thread, NULL) == 0) {
             play_up = 1;
         } else {
-            exit_code = 1; goto join_threads;
+            ABORT_STARTUP();
         }
     }
 
@@ -133,7 +141,7 @@ join_threads:
     if (input_up) pthread_join(input_server_thread, NULL);
     if (output_up) pthread_join(output_server_thread, NULL);
     if (play_up) pthread_join(play_thread_id, NULL);
-
+    
 cleanup:
     // Execute global teardown sequence
     perform_cleanup();
