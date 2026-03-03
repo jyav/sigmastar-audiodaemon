@@ -146,6 +146,18 @@ void *audio_input_server_thread(void *arg) {
     // --- KERNEL PANIC FIX: Synchronize hardware shutdown ---
     pthread_join(hw_ai_thread, NULL);
 
+    // --- POSIX HYGIENE FIX: Cleanly sever all active network clients ---
+    pthread_mutex_lock(&client_list_lock);
+    ClientNode *current = client_list_head;
+    while (current != NULL) {
+        ClientNode *next = current->next;
+        close(current->sockfd); // Force EOF to the connected client
+        free(current);          // Free the heap memory
+        current = next;
+    }
+    client_list_head = NULL;
+    pthread_mutex_unlock(&client_list_lock);
+
     close(sockfd);
     return NULL;
 }
