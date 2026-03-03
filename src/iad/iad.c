@@ -96,7 +96,7 @@ int main(int argc, char *argv[]) {
     pthread_t control_server_thread, input_server_thread, output_server_thread, play_thread_id;
 
     if (create_thread(&control_server_thread, audio_control_server_thread, NULL)) {
-        return 1;
+        goto cleanup;
     }
 
     if (!disable_ai) {
