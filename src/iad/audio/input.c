@@ -137,6 +137,10 @@ void *ai_record_thread(void *arg) {
                         handle_audio_error("AI: write to sockfd");
                     }
                     
+                    // --- FD LEAK FIX ADDED ---
+                    // The socket must be closed at the OS level before we free the memory node
+                    close(current->sockfd);
+                    
                     if (current == client_list_head) {
                         client_list_head = current->next;
                         free(current);
