@@ -177,24 +177,3 @@ void mute_audio_output_device(int mute_enable) {
         handle_audio_error("AO: Failed to mute SigmaStar audio output device");
     }
 }
-
-//todo
-void enable_output_channel() {
-    int aoDevID, aoChnID;
-    get_audio_output_device_attributes(&aoDevID, &aoChnID);
-    AudioOutputAttributes attrs = get_audio_attributes();
-
-    if (MI_AO_EnableChn(aoDevID, aoChnID) != 0) {
-        handle_audio_error("AO: Failed to enable SigmaStar output channel");
-    }
-
-    // Set volume and gain for the audio device
-    int vol = attrs.SetVolItem ? attrs.SetVolItem->valueint : DEFAULT_AO_CHN_VOL;
-    if (vol < -60 || vol > 30) {
-        printf("[ERROR] [%s] SetVol value out of range: %d. Clamping to %d.\n", TAG, vol, DEFAULT_AO_CHN_VOL);
-        vol = DEFAULT_AO_CHN_VOL;
-    }
-    if (MI_AO_SetVolume(aoDevID, vol) != 0) {
-        handle_audio_error("Failed to set SigmaStar volume attribute");
-    }
-}
