@@ -11,6 +11,7 @@
 #include <stdio.h>                   // Standard I/O functions
 #include <stdlib.h>
 #include <pthread.h>                 // Multithreading functions
+#include "mi_sys.h"
 #include "iad.h"
 #include "network/input_server.h"    // Audio input server functions
 #include "network/output_server.h"   // Audio output server functions
@@ -60,6 +61,7 @@ int main(int argc, char *argv[]) {
     signal(SIGPIPE, SIG_IGN);
 
     printf("[INFO] Starting audio daemon\n");
+    MI_SYS_Init();
 
     char *config_file_path = options.config_file_path;
     int disable_ai = options.disable_ai;
