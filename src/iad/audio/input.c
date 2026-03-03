@@ -115,23 +115,19 @@ void *ai_record_thread(void *arg) {
     printf("[INFO] Sending audio data to input client\n");
 
     while (TRUE) {
-        // --- SIGMASTAR FRAME CAPTURE ---
         MI_AUDIO_Frame_t stAiChFrame;
         MI_AUDIO_AecFrame_t stAecFrame;
         
-        // Zero out structs to prevent stack garbage corruption
         memset(&stAiChFrame, 0, sizeof(MI_AUDIO_Frame_t));
         memset(&stAecFrame, 0, sizeof(MI_AUDIO_AecFrame_t));
 
-        // Block and wait for the hardware to fill the mic buffer (-1)
         if (MI_AI_GetFrame(aiDevID, aiChnID, &stAiChFrame, &stAecFrame, -1) == 0) {
             
-            pthread_mutex_lock(&audio_buffer_lock);
+            // --- SIGMASTAR FIX: USE ISOLATED MUTEX ---
+            pthread_mutex_lock(&client_list_lock);
 
-            // Iterate over all clients and send the audio data
             ClientNode *current = client_list_head;
             while (current) {
-                // SigmaStar payload is in apVirAddr[0]
                 ssize_t wr_sock = write(current->sockfd, stAiChFrame.apVirAddr[0], stAiChFrame.u32Len);
                 
                 if (wr_sock < 0) {
@@ -158,9 +154,8 @@ void *ai_record_thread(void *arg) {
                 }
                 current = current->next;
             }
-            pthread_mutex_unlock(&audio_buffer_lock);
+            pthread_mutex_unlock(&client_list_lock);
 
-            // Release DMA lock instantly
             MI_AI_ReleaseFrame(aiDevID, aiChnID, &stAiChFrame, &stAecFrame);
         }
     }
