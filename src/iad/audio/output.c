@@ -148,8 +148,6 @@ void *ao_play_thread(void *arg) {
     int aoDevID, aoChnID;
     get_audio_output_device_attributes(&aoDevID, &aoChnID);
 
-    initialize_audio_output_device(aoDevID, aoChnID);
-
     while (TRUE) {
         pthread_mutex_lock(&audio_buffer_lock);
 
