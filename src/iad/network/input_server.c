@@ -18,14 +18,18 @@
 extern volatile int g_stop_thread;
 extern pthread_mutex_t g_stop_thread_mutex;
 
+// --- INITIALIZE THE DEDICATED LOCK ---
+pthread_mutex_t client_list_lock = PTHREAD_MUTEX_INITIALIZER;
+
 void handle_audio_input_client(int client_sock) {
-    pthread_mutex_lock(&audio_buffer_lock);
+    // --- SIGMASTAR FIX: USE ISOLATED MUTEX ---
+    pthread_mutex_lock(&client_list_lock);
     
     ClientNode *new_client = (ClientNode *)malloc(sizeof(ClientNode));
     if (!new_client) {
         handle_audio_error(TAG, "malloc");
         close(client_sock);
-        pthread_mutex_unlock(&audio_buffer_lock);
+        pthread_mutex_unlock(&client_list_lock);
         return;
     }
     
@@ -33,8 +37,9 @@ void handle_audio_input_client(int client_sock) {
     new_client->next = client_list_head;
     client_list_head = new_client;
     
-    pthread_mutex_unlock(&audio_buffer_lock);
+    pthread_mutex_unlock(&client_list_lock);
     printf("[INFO] [AI] Input client connected\n");
+}
 
     // --- INGENIC CONCURRENCY BUG REMOVED ---
     /*
