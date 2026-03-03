@@ -92,25 +92,31 @@ int main(int argc, char *argv[]) {
         initialize_audio_input_device(aiDev, aiChn);
     }
 
-    // 5. SPAWN NETWORK & PLAYBACK THREADS
+// 5. SPAWN NETWORK & PLAYBACK THREADS
     pthread_t control_server_thread, input_server_thread, output_server_thread, play_thread_id;
+    int exit_code = 0;
 
+    // --- RESOURCE LEAK FIXED: Trap failures to guarantee MI_SYS_Exit ---
     if (create_thread(&control_server_thread, audio_control_server_thread, NULL)) {
+        exit_code = 1;
         goto cleanup;
     }
 
     if (!disable_ai) {
         if (create_thread(&input_server_thread, audio_input_server_thread, NULL)) {
-            return 1;
+            exit_code = 1;
+            goto cleanup;
         }
     }
 
     if (!disable_ao) {
         if (create_thread(&output_server_thread, audio_output_server_thread, NULL)) {
-            return 1;
+            exit_code = 1;
+            goto cleanup;
         }
         if (create_thread(&play_thread_id, ao_play_thread, NULL)) {
-            return 1;
+            exit_code = 1;
+            goto cleanup;
         }
     }
 
@@ -124,5 +130,9 @@ int main(int argc, char *argv[]) {
         pthread_join(play_thread_id, NULL);
     }
 
-    return 0;
+cleanup:
+    // Execute global teardown sequence
+    perform_cleanup();
+    printf("[INFO] Audio daemon exited safely.\n");
+    return exit_code;
 }
