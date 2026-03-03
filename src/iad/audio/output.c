@@ -146,7 +146,6 @@ void reinitialize_audio_output_device(int aoDevID, int aoChnID) {
  */
 void *ao_play_thread(void *arg) {
     printf("[INFO] [AO] Entering ao_play_thread\n");
-
     struct sched_param param;
     param.sched_priority = sched_get_priority_max(SCHED_FIFO);
     pthread_setschedparam(pthread_self(), SCHED_FIFO, &param);
@@ -157,7 +156,7 @@ void *ao_play_thread(void *arg) {
     while (TRUE) {
         pthread_mutex_lock(&audio_buffer_lock);
         
-        // --- PHANTOM WAKEUP FIX: Thread must break out of the while loop if shutting down ---
+        // --- PHANTOM WAKEUP FIX ---
         while (audio_buffer_size == 0 && !g_stop_thread) {
             pthread_cond_wait(&audio_data_cond, &audio_buffer_lock);
         }
@@ -168,25 +167,16 @@ void *ao_play_thread(void *arg) {
             break;
         }
 
-            pthread_mutex_unlock(&g_stop_thread_mutex);
-
-            pthread_cond_wait(&audio_data_cond, &audio_buffer_lock);
-        }
-
         // --- SIGMASTAR FRAME SEND ---
         MI_AUDIO_Frame_t stAoSendFrame;
-        
-        // Zero out the struct to prevent stack garbage from corrupting the DMA registers
-        // (This implicitly sets eBitwidth=0/16-bit and eSoundmode=0/Mono, matching init)
-        memset(&stAoSendFrame, 0, sizeof(MI_AUDIO_Frame_t)); 
-        
+        memset(&stAoSendFrame, 0, sizeof(MI_AUDIO_Frame_t));
         stAoSendFrame.u32Len = audio_buffer_size;
         stAoSendFrame.apVirAddr[0] = audio_buffer;
-        stAoSendFrame.apVirAddr[1] = NULL; 
+        stAoSendFrame.apVirAddr[1] = NULL;
 
         if (MI_AO_SendFrame(aoDevID, aoChnID, &stAoSendFrame, -1) != 0) {
             pthread_mutex_unlock(&audio_buffer_lock);
-
+            
             // --- RACE CONDITION FIX: Do not resurrect hardware during shutdown ---
             if (g_stop_thread) {
                 break;
@@ -199,7 +189,7 @@ void *ao_play_thread(void *arg) {
         audio_buffer_size = 0;
         pthread_mutex_unlock(&audio_buffer_lock);
     }
-
+    
     return NULL;
 }
 
