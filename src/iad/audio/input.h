@@ -32,6 +32,9 @@ typedef struct {
     int sockfd;
 } AiThreadArg;
 
+// --- DEDICATED AI MUTEX ---
+extern pthread_mutex_t client_list_lock;
+
 // Functions
 int initialize_audio_input_device(int aiDevID, int aiChnID);
 void *ai_record_thread(void *output_file_path);
