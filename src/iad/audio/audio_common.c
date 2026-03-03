@@ -1,5 +1,13 @@
+// --- INGENIC HEADERS REMOVED ---
+/*
 #include "imp/imp_audio.h"
 #include "imp/imp_log.h"
+*/
+
+// --- SIGMASTAR HEADERS ADDED ---
+#include "mi_ao.h"
+#include "mi_sys.h"
+
 #include "audio_common.h"
 #include "config.h"
 #include "logging.h"
@@ -119,8 +127,8 @@ void free_audio_output_attributes(AudioOutputAttributes *attrs) {
 void pause_audio_output() {
     int aoDevID, aoChnID;
     get_audio_output_device_attributes(&aoDevID, &aoChnID);
-    if (IMP_AO_PauseChn(aoDevID, aoChnID)) {
-        handle_audio_error("AO: Failed to pause audio output");
+    if (MI_AO_PauseChn(aoDevID, aoChnID) != 0) {
+        handle_audio_error("AO: Failed to pause SigmaStar audio output");
     }
 }
 
@@ -130,8 +138,8 @@ void pause_audio_output() {
 void clear_audio_output_buffer() {
     int aoDevID, aoChnID;
     get_audio_output_device_attributes(&aoDevID, &aoChnID);
-    if (IMP_AO_ClearChnBuf(aoDevID, aoChnID)) {
-        handle_audio_error("AO: Failed to clear audio output buffer");
+    if (MI_AO_ClearChnBuf(aoDevID, aoChnID) != 0) {
+        handle_audio_error("AO: Failed to clear SigmaStar audio output buffer");
     }
 }
 
@@ -141,31 +149,32 @@ void clear_audio_output_buffer() {
 void resume_audio_output() {
     int aoDevID, aoChnID;
     get_audio_output_device_attributes(&aoDevID, &aoChnID);
-    if (IMP_AO_ResumeChn(aoDevID, aoChnID)) {
-        handle_audio_error("AO: Failed to resume audio output");
+    if (MI_AO_ResumeChn(aoDevID, aoChnID) != 0) {
+        handle_audio_error("AO: Failed to resume SigmaStar audio output");
     }
 }
 
 /**
  * Flushes the audio output buffer.
+ * SigmaStar handles flushing via the Clear command.
  */
 void flush_audio_output_buffer() {
     int aoDevID, aoChnID;
     get_audio_output_device_attributes(&aoDevID, &aoChnID);
-    if (IMP_AO_FlushChnBuf(aoDevID, aoChnID)) {
-        handle_audio_error("AO: Failed to flush audio output buffer");
+    if (MI_AO_ClearChnBuf(aoDevID, aoChnID) != 0) {
+        handle_audio_error("AO: Failed to flush SigmaStar audio output buffer");
     }
 }
 
 /**
- * Mutes or unmutes the audio output device based on the given parameter.
- * @param mute_enable If set to non-zero, mutes the device. If zero, unmutes it.
+ * Mutes or unmutes the audio output device.
  */
 void mute_audio_output_device(int mute_enable) {
     int aoDevID, aoChnID;
     get_audio_output_device_attributes(&aoDevID, &aoChnID);
-    if (IMP_AO_SetVolMute(aoDevID, aoChnID, mute_enable)) {
-        handle_audio_error("AO: Failed to mute audio output device");
+    // mute_enable > 0 means TRUE (Mute), 0 means FALSE (Unmute)
+    if (MI_AO_SetMute(aoDevID, mute_enable ? TRUE : FALSE) != 0) {
+        handle_audio_error("AO: Failed to mute SigmaStar audio output device");
     }
 }
 
@@ -175,17 +184,17 @@ void enable_output_channel() {
     get_audio_output_device_attributes(&aoDevID, &aoChnID);
     AudioOutputAttributes attrs = get_audio_attributes();
 
-    if (IMP_AO_EnableChn(aoDevID, aoChnID)) {
-        handle_audio_error("AO: Failed to enable output channel");
+    if (MI_AO_EnableChn(aoDevID, aoChnID) != 0) {
+        handle_audio_error("AO: Failed to enable SigmaStar output channel");
     }
 
     // Set volume and gain for the audio device
     int vol = attrs.SetVolItem ? attrs.SetVolItem->valueint : DEFAULT_AO_CHN_VOL;
-    if (vol < -30 || vol > 120) {
-        IMP_LOG_ERR(TAG, "SetVol value out of range: %d. Using default value: %d.\n", vol, DEFAULT_AO_CHN_VOL);
+    if (vol < -60 || vol > 30) {
+        printf("[ERROR] [%s] SetVol value out of range: %d. Clamping to %d.\n", TAG, vol, DEFAULT_AO_CHN_VOL);
         vol = DEFAULT_AO_CHN_VOL;
     }
-    if (IMP_AO_SetVol(aoDevID, aoChnID, vol)) {
-        handle_audio_error("Failed to set volume attribute");
+    if (MI_AO_SetVolume(aoDevID, vol) != 0) {
+        handle_audio_error("Failed to set SigmaStar volume attribute");
     }
 }
