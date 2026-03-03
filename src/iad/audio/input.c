@@ -194,5 +194,7 @@ int disable_audio_input() {
         return -1;
     }
 
+    MI_AI_ClrPubAttr(aiDevID); // FIXED: Prevent kernel lock on daemon restart
+    
     return 0;
 }
