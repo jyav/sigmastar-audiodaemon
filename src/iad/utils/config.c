@@ -2,7 +2,6 @@
 #include <stdio.h>          // for fprintf, stderr, fclose, NULL, fseek, fopen
 #include <stdlib.h>         // for free, calloc
 #include <string.h>         // for strcmp, strdup
-#include "imp/imp_audio.h"  // for AUDIO_SAMPLE_RATE_16000, AUDIO_SAMPLE_RAT...
 #include "config.h"
 #include "cJSON.h"          // for cJSON_IsNumber, cJSON_IsBool, cJSON_GetOb...
 #include "output.h"         // for DEFAULT_AO_MAX_FRAME_SIZE
@@ -61,10 +60,6 @@ int config_load_from_file(const char *config_file_path) {
     // Check if parsing was successful and log an error if it wasn't
     if (!config_root) {
         fprintf(stderr, "Failed to parse JSON config. Error near: %s\n", cJSON_GetErrorPtr());
-
-	//Debug: Print loaded json config
-	//cJSON *loaded_config = get_audio_config();
-	//printf("Loaded JSON: %s\n", cJSON_Print(loaded_config));
 
         free(content);
         return -1;
@@ -408,24 +403,4 @@ int config_get_ao_frame_size() {
     }
 
     return frame_size->valueint;
-}
-
-/**
- * Checks if the given samplerate is valid.
- * @param samplerate The samplerate to check.
- * @return 1 if valid, 0 otherwise.
- */
-int is_valid_samplerate(int samplerate) {
-    switch (samplerate) {
-        case AUDIO_SAMPLE_RATE_8000:
-        case AUDIO_SAMPLE_RATE_16000:
-        case AUDIO_SAMPLE_RATE_24000:
-        case AUDIO_SAMPLE_RATE_32000:
-        case AUDIO_SAMPLE_RATE_44100:
-        case AUDIO_SAMPLE_RATE_48000:
-        case AUDIO_SAMPLE_RATE_96000:
-            return 1;  // valid
-        default:
-            return 0;  // invalid
-    }
 }
