@@ -130,12 +130,11 @@ void remove_pid_file() {
  * @param sig Signal number (expected to be SIGINT).
  */
 void handle_sigint(int sig) {
-    printf("Caught signal %d. Exiting gracefully...\n", sig);
-    perform_cleanup();
-    remove_pid_file();
-    signal(sig, SIG_DFL);
-    raise(sig);
-    exit(0);
+    // POSIX strictly forbids complex functions here. 
+    // Set the flag and let the threads gracefully exit.
+    pthread_mutex_lock(&g_stop_thread_mutex);
+    g_stop_thread = 1;
+    pthread_mutex_unlock(&g_stop_thread_mutex);
 }
 
 /**
@@ -146,11 +145,12 @@ void handle_sigint(int sig) {
 void setup_signal_handling() {
     struct sigaction sa;
     sa.sa_handler = handle_sigint;
-    sa.sa_flags = 0;
     sigemptyset(&sa.sa_mask);
-
+    sa.sa_flags = 0;
+    
     sigaction(SIGINT, &sa, NULL);
     sigaction(SIGTERM, &sa, NULL);
+    signal(SIGPIPE, SIG_IGN); // Ignore broken pipes from disconnected sockets
 }
 
 /**
