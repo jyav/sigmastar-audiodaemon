@@ -60,7 +60,7 @@ void *audio_output_server_thread(void *arg) {
             break;
         }
 
-        printf("[INFO] [AO] Waiting for output client connection\n");
+printf("[INFO] [AO] Waiting for output client connection\n");
         int client_sock = accept(sockfd, NULL, NULL);
         if (client_sock == -1) {
             handle_audio_error(TAG, "accept");
@@ -71,21 +71,25 @@ void *audio_output_server_thread(void *arg) {
         while (active_client_sock != -1) {
             pthread_cond_wait(&audio_data_cond, &audio_buffer_lock);
         }
-
         active_client_sock = client_sock;
 
+        // --- INGENIC DIRTY HACK REMOVED ---
+        /*
         // Enabling the channel, after its already enabled, clears all buffers for some reason... otherwise
         // old audio will play on each subsequent client connect... unknown why.
-        enable_output_channel();
-        //There has to be a better way than to do this.
+        enable_output_channel(); //There has to be a better way than to do this.
+        */
+
+        // --- SIGMASTAR CLEAN FLUSH ADDED ---
+        // Mathematically clear the DMA ring buffer before the new client sends data
+        clear_audio_output_buffer();
 
         printf("[INFO] [AO] Client connected\n");
-
         memset(audio_buffer, 0, g_ao_max_frame_size);
         audio_buffer_size = 0;
         pthread_mutex_unlock(&audio_buffer_lock);
-
-        unsigned char buf[g_ao_max_frame_size];
+		
+		unsigned char buf[g_ao_max_frame_size];
         ssize_t read_size;
 
         printf("[INFO] [AO] Receiving audio data from client\n");
