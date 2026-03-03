@@ -114,13 +114,14 @@ void *ai_record_thread(void *arg) {
 
     printf("[INFO] Sending audio data to input client\n");
 
-    while (TRUE) {
+// --- CPU SPIN FIX: Honor the stop thread flag ---
+    while (!g_stop_thread) {
         MI_AUDIO_Frame_t stAiChFrame;
         MI_AUDIO_AecFrame_t stAecFrame;
         
         memset(&stAiChFrame, 0, sizeof(MI_AUDIO_Frame_t));
         memset(&stAecFrame, 0, sizeof(MI_AUDIO_AecFrame_t));
-
+        
         if (MI_AI_GetFrame(aiDevID, aiChnID, &stAiChFrame, &stAecFrame, -1) == 0) {
             
             // --- SIGMASTAR FIX: USE ISOLATED MUTEX ---
@@ -161,6 +162,9 @@ void *ai_record_thread(void *arg) {
             pthread_mutex_unlock(&client_list_lock);
 
             MI_AI_ReleaseFrame(aiDevID, aiChnID, &stAiChFrame, &stAecFrame);
+        } else {
+            // If the hardware drops or is being disabled, sleep 10ms to prevent a 100% CPU lockup
+            usleep(10000);
         }
     }
     return NULL;
