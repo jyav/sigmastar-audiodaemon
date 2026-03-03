@@ -15,7 +15,7 @@ int setup_control_client_connection() {
     struct sockaddr_un addr;
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
-    strncpy(&addr.sun_path[1], AUDIO_CONTROL_SOCKET_PATH, sizeof(addr.sun_path) - 2);
+    strncpy(addr.sun_path, AUDIO_CONTROL_SOCKET_PATH, sizeof(addr.sun_path) - 1);
 
     if (connect(sockfd, (struct sockaddr*)&addr, sizeof(sa_family_t) + strlen(&addr.sun_path[1]) + 1) == -1) {
         perror("connect");
