@@ -88,8 +88,8 @@ void initialize_audio_output_device(int aoDevID, int aoChnID) {
     stAoVqe.s32WorkSampleRate = DEFAULT_AO_SAMPLE_RATE; 
     stAoVqe.s32FrameSample = 128; // Strict SigmaStar VQE requirement
 
-    stAoVqe.stHpfCfg.eMode = E_MI_AUDIO_ALGORITHM_MODE_USER;
-    stAoVqe.stHpfCfg.eHpfFreq = E_MI_AUDIO_HPF_FREQ_150; 
+    stAoVqe.stHpfCfg.eMode = E_MI_AUDIO_ALGORITHM_MODE_DEFAULT; // FIXED: Prevent zero-math corruption
+    stAoVqe.stHpfCfg.eHpfFreq = E_MI_AUDIO_HPF_FREQ_150;
 
     if (MI_AO_SetVqeAttr(aoDevID, aoChnID, &stAoVqe) == 0) {
         MI_AO_EnableVqe(aoDevID, aoChnID);
