@@ -83,14 +83,16 @@ int initialize_audio_input_device(int aiDevID, int aiChnID) {
     stAiVqe.stAnrCfg.eMode = E_MI_AUDIO_ALGORITHM_MODE_DEFAULT; // FIXED
     
     // 4. THE AEC BINDING (CRITICAL)
-    // We bind the microphone's echo canceller directly to the Speaker Output (AO)
-    // using the defaults established in output.h
-    if (MI_AI_SetVqeAttr(aiDevID, aiChnID, DEFAULT_AO_DEV_ID, DEFAULT_AO_CHN_ID, &stAiVqe) == 0) {
+    // Fetch the dynamically configured AO device to ensure the echo canceller 
+    // binds to the correct active hardware registers.
+    int aoDevID, aoChnID;
+    get_audio_output_device_attributes(&aoDevID, &aoChnID);
+
+    if (MI_AI_SetVqeAttr(aiDevID, aiChnID, aoDevID, aoChnID, &stAiVqe) == 0) {
         MI_AI_EnableVqe(aiDevID, aiChnID);
     } else {
         printf("[WARN] [%s] Failed to initialize AI VQE DSP.\n", TAG);
     }
-
     // Debugging prints
     printf("[INFO] AI HW Samplerate Locked: 16000 Hz\n");
     printf("[INFO] AI HW Volume: %d dB\n", vol);
