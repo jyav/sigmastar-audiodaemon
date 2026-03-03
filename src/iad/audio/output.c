@@ -177,6 +177,12 @@ void *ao_play_thread(void *arg) {
 
         if (MI_AO_SendFrame(aoDevID, aoChnID, &stAoSendFrame, -1) != 0) {
             pthread_mutex_unlock(&audio_buffer_lock);
+
+            // --- RACE CONDITION FIX: Do not resurrect hardware during shutdown ---
+            if (g_stop_thread) {
+                break;
+            }
+            
             handle_and_reinitialize_output(aoDevID, aoChnID, "MI_AO_SendFrame data error");
             continue;
         }
