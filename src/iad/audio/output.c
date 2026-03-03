@@ -3,8 +3,17 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
+
+// --- INGENIC HEADERS REMOVED ---
+/*
 #include "imp/imp_audio.h"
 #include "imp/imp_log.h"
+*/
+
+// --- SIGMASTAR HEADERS ADDED ---
+#include "mi_sys.h"
+#include "mi_ao.h"
+
 #include "audio_common.h"
 #include "config.h"
 #include "cJSON.h"
@@ -43,9 +52,11 @@ void handle_and_reinitialize_output(int aoDevID, int aoChnID, const char *errorM
  * @param aoChnID Channel ID.
  */
 void initialize_audio_output_device(int aoDevID, int aoChnID) {
-    IMPAudioIOAttr attr;
     AudioOutputAttributes attrs = get_audio_attributes();
 
+    // --- INGENIC INITIALIZATION REMOVED ---
+    /*
+    IMPAudioIOAttr attr;
     // Set audio attributes based on the configuration or default values
     attr.bitwidth = attrs.bitwidthItem ? string_to_bitwidth(attrs.bitwidthItem->valuestring) : AUDIO_BIT_WIDTH_16;
     attr.soundmode = attrs.soundmodeItem ? string_to_soundmode(attrs.soundmodeItem->valuestring) : AUDIO_SOUND_MODE_MONO;
@@ -92,6 +103,62 @@ void initialize_audio_output_device(int aoDevID, int aoChnID) {
     if (IMP_AO_SetGain(aoDevID, aoChnID, gain)) {
         handle_audio_error("Failed to set gain attribute");
     }
+    */
+
+    // --- SIGMASTAR INITIALIZATION ADDED ---
+    MI_AUDIO_Attr_t stAttr;
+
+    // 1. HARDCODE STRICT SILICON CONSTRAINTS
+    // Ignoring JSON variables here to guarantee the DAC locks to 16kHz for the AEC reference math.
+    stAttr.eBitwidth = E_MI_AUDIO_BIT_WIDTH_16;
+    stAttr.eSamplerate = E_MI_AUDIO_SAMPLE_RATE_16000;
+    stAttr.eSoundmode = E_MI_AUDIO_SOUND_MODE_MONO;
+    stAttr.eWorkmode = E_MI_AUDIO_MODE_I2S_MASTER;
+    stAttr.u32PtNumPerFrm = 1024; // DMA Buffer Chunk Size
+    stAttr.u32ChnCnt = 1;
+
+    // Initialize the base hardware
+    if (MI_AO_SetPubAttr(aoDevID, &stAttr) != 0 || 
+        MI_AO_Enable(aoDevID) != 0 || 
+        MI_AO_EnableChn(aoDevID, aoChnID) != 0) {
+        handle_audio_error("AO: Failed to initialize SigmaStar audio attributes");
+        exit(EXIT_FAILURE);
+    }
+
+    // 2. HARDWARE RESAMPLING (SRC)
+    // If your incoming network stream (e.g., from Opus/Baresip) is 48kHz, we tell the DAC 
+    // to down-sample it in hardware to match the 16kHz physical state.
+    // MI_AO_EnableReSmp(aoDevID, aoChnID, E_MI_AUDIO_SAMPLE_RATE_48000);
+
+    // 3. HARDWARE GAIN/VOLUME
+    int vol = attrs.SetVolItem ? attrs.SetVolItem->valueint : 10;
+    if (vol < -60 || vol > 30) {
+        printf("[ERROR] [%s] SetVol value out of range: %d. Clamping to 10.\n", TAG, vol);
+        vol = 10;
+    }
+    MI_AO_SetMute(aoDevID, FALSE);
+    if (MI_AO_SetVolume(aoDevID, vol) != 0) {
+        handle_audio_error("AO: Failed to set SigmaStar volume attribute");
+    }
+
+    // 4. HARDWARE DSP (VQE: HPF & EQ)
+    MI_AO_VqeConfig_t stAoVqe;
+    memset(&stAoVqe, 0, sizeof(stAoVqe));
+    
+    stAoVqe.bHpfOpen = TRUE; // Cut low rumble
+    stAoVqe.bEqOpen = TRUE;  // Enable Hardware EQ
+    stAoVqe.s32WorkSampleRate = E_MI_AUDIO_SAMPLE_RATE_16000; // Must match base attr
+    stAoVqe.s32FrameSample = 128; // Strict SigmaStar VQE requirement
+
+    stAoVqe.stHpfCfg.eMode = E_MI_AUDIO_ALGORITHM_MODE_USER;
+    stAoVqe.stHpfCfg.eHpfFreq = E_MI_AUDIO_HPF_FREQ_150; // Filter bass <150Hz
+
+    if (MI_AO_SetVqeAttr(aoDevID, aoChnID, &stAoVqe) == 0) {
+        MI_AO_EnableVqe(aoDevID, aoChnID);
+    } else {
+        printf("[WARN] [%s] Failed to initialize AO VQE DSP.\n", TAG);
+    }
+
 
     // Get frame size from config and set it
     int frame_size_from_config = config_get_ao_frame_size();
@@ -106,10 +173,8 @@ void initialize_audio_output_device(int aoDevID, int aoChnID) {
     }
 
     // Debugging prints
-    printf("[INFO] AO samplerate: %d\n", attr.samplerate);
-    printf("[INFO] AO Volume: %d\n", vol);
-    printf("[INFO] AO Gain: %d\n", gain);
-
+    printf("[INFO] AO HW Samplerate Locked: 16000 Hz\n");
+    printf("[INFO] AO HW Volume: %d dB\n", vol);
 }
 
 /**
@@ -129,8 +194,16 @@ void cleanup_audio_output() {
  * @param aoChnID Channel ID.
  */
 void reinitialize_audio_output_device(int aoDevID, int aoChnID) {
+    // --- INGENIC DE-INIT REMOVED ---
+    /*
     IMP_AO_DisableChn(aoDevID, aoChnID);
     IMP_AO_Disable(aoDevID);
+    */
+
+    // --- SIGMASTAR DE-INIT ADDED ---
+    MI_AO_DisableChn(aoDevID, aoChnID);
+    MI_AO_Disable(aoDevID);
+
     initialize_audio_output_device(aoDevID, aoChnID);
 }
 
@@ -171,12 +244,28 @@ void *ao_play_thread(void *arg) {
             pthread_cond_wait(&audio_data_cond, &audio_buffer_lock);
         }
 
+        // --- INGENIC FRAME SEND REMOVED ---
+        /*
         IMPAudioFrame frm = {.virAddr = (uint32_t *)audio_buffer, .len = audio_buffer_size};
 
         // Send the audio frame for playback
         if (IMP_AO_SendFrame(aoDevID, aoChnID, &frm, BLOCK)) {
             pthread_mutex_unlock(&audio_buffer_lock);
             handle_and_reinitialize_output(aoDevID, aoChnID, "IMP_AO_SendFrame data error");
+            continue;
+        }
+        */
+
+        // --- SIGMASTAR FRAME SEND ADDED ---
+        MI_AUDIO_Frame_t stAoSendFrame;
+        stAoSendFrame.u32Len = audio_buffer_size;
+        stAoSendFrame.apVirAddr[0] = audio_buffer;
+        stAoSendFrame.apVirAddr[1] = NULL; // NULL because it is Mono
+
+        // Send the audio frame for playback (-1 = BLOCK until DMA is ready)
+        if (MI_AO_SendFrame(aoDevID, aoChnID, &stAoSendFrame, -1) != 0) {
+            pthread_mutex_unlock(&audio_buffer_lock);
+            handle_and_reinitialize_output(aoDevID, aoChnID, "MI_AO_SendFrame data error");
             continue;
         }
 
@@ -201,6 +290,8 @@ int disable_audio_output() {
     int mute_status = 0;
     mute_audio_output_device(mute_status);
 
+    // --- INGENIC HARDWARE SHUTDOWN REMOVED ---
+    /*
     ret = IMP_AO_DisableChn(aoDevID, aoChnID);
     if (ret != 0) {
         IMP_LOG_ERR(TAG, "Audio channel disable error\n");
@@ -210,6 +301,20 @@ int disable_audio_output() {
     ret = IMP_AO_Disable(aoDevID);
     if (ret != 0) {
         IMP_LOG_ERR(TAG, "Audio device disable error\n");
+        return -1;
+    }
+    */
+
+    // --- SIGMASTAR HARDWARE SHUTDOWN ADDED ---
+    ret = MI_AO_DisableChn(aoDevID, aoChnID);
+    if (ret != 0) {
+        printf("[ERROR] [%s] SigmaStar audio channel disable error\n", TAG);
+        return -1;
+    }
+
+    ret = MI_AO_Disable(aoDevID);
+    if (ret != 0) {
+        printf("[ERROR] [%s] SigmaStar audio device disable error\n", TAG);
         return -1;
     }
 
