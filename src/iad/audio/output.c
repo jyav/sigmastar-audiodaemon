@@ -22,6 +22,10 @@
 // Global variable to hold the maximum frame size for audio output.
 int g_ao_max_frame_size = DEFAULT_AO_MAX_FRAME_SIZE;
 
+// --- BARESIP BACKPRESSURE PACING FIX ---
+// This signals the network thread that the DMA ring has successfully consumed the buffer
+pthread_cond_t audio_free_cond = PTHREAD_COND_INITIALIZER;
+
 /**
  * Set the global maximum frame size for audio output.
  * @param frame_size The desired frame size.
@@ -52,6 +56,9 @@ void initialize_audio_output_device(int aoDevID, int aoChnID) {
     // --- SIGMASTAR INITIALIZATION ---
     MI_AUDIO_Attr_t stAttr;
 
+    // --- KERNEL PANIC FIX: Zero-initialize the struct ---
+    memset(&stAttr, 0, sizeof(MI_AUDIO_Attr_t));
+
     // 1. HARDCODE STRICT SILICON CONSTRAINTS USING MACROS
     stAttr.eBitwidth = E_MI_AUDIO_BIT_WIDTH_16;
     stAttr.eSamplerate = DEFAULT_AO_SAMPLE_RATE;
@@ -61,8 +68,8 @@ void initialize_audio_output_device(int aoDevID, int aoChnID) {
     stAttr.u32ChnCnt = DEFAULT_AO_CHN_CNT;
 
     // Initialize the base hardware
-    if (MI_AO_SetPubAttr(aoDevID, &stAttr) != 0 || 
-        MI_AO_Enable(aoDevID) != 0 || 
+    if (MI_AO_SetPubAttr(aoDevID, &stAttr) != 0 ||
+        MI_AO_Enable(aoDevID) != 0 ||
         MI_AO_EnableChn(aoDevID, aoChnID) != 0) {
         handle_audio_error("AO: Failed to initialize SigmaStar audio attributes");
         exit(EXIT_FAILURE);
@@ -74,6 +81,7 @@ void initialize_audio_output_device(int aoDevID, int aoChnID) {
         printf("[ERROR] [%s] SetVol value out of range: %d. Clamping to %d.\n", TAG, vol, DEFAULT_AO_CHN_VOL);
         vol = DEFAULT_AO_CHN_VOL;
     }
+
     MI_AO_SetMute(aoDevID, FALSE);
     if (MI_AO_SetVolume(aoDevID, vol) != 0) {
         handle_audio_error("AO: Failed to set SigmaStar volume attribute");
@@ -82,13 +90,15 @@ void initialize_audio_output_device(int aoDevID, int aoChnID) {
     // 3. HARDWARE DSP (VQE: HPF & EQ)
     MI_AO_VqeConfig_t stAoVqe;
     memset(&stAoVqe, 0, sizeof(stAoVqe));
-    
-    stAoVqe.bHpfOpen = TRUE; 
-    stAoVqe.bEqOpen = TRUE;  
-    stAoVqe.s32WorkSampleRate = DEFAULT_AO_SAMPLE_RATE; 
+
+    stAoVqe.bHpfOpen = TRUE;
+    // --- SILICON BUG FIX: Explicitly disable empty EQ matrix to prevent zero-math speaker mute ---
+    stAoVqe.bEqOpen = FALSE; 
+
+    stAoVqe.s32WorkSampleRate = DEFAULT_AO_SAMPLE_RATE;
     stAoVqe.s32FrameSample = 128; // Strict SigmaStar VQE requirement
 
-    stAoVqe.stHpfCfg.eMode = E_MI_AUDIO_ALGORITHM_MODE_DEFAULT; // FIXED: Prevent zero-math corruption
+    stAoVqe.stHpfCfg.eMode = E_MI_AUDIO_ALGORITHM_MODE_DEFAULT; 
     stAoVqe.stHpfCfg.eHpfFreq = E_MI_AUDIO_HPF_FREQ_150;
 
     if (MI_AO_SetVqeAttr(aoDevID, aoChnID, &stAoVqe) == 0) {
@@ -133,9 +143,7 @@ void reinitialize_audio_output_device(int aoDevID, int aoChnID) {
     MI_AO_DisableVqe(aoDevID, aoChnID);
     MI_AO_DisableChn(aoDevID, aoChnID);
     MI_AO_Disable(aoDevID);
-    
     MI_AO_ClrPubAttr(aoDevID); // FIXED: Wipe kernel state to allow SetPubAttr to succeed
-    
     initialize_audio_output_device(aoDevID, aoChnID);
 }
 
@@ -162,7 +170,6 @@ void *ao_play_thread(void *arg) {
         while (audio_buffer_size == 0 && !g_stop_thread) {
             pthread_cond_wait(&audio_data_cond, &audio_buffer_lock);
         }
-        
         if (g_stop_thread) {
             pthread_mutex_unlock(&audio_buffer_lock);
             break;
@@ -174,6 +181,10 @@ void *ao_play_thread(void *arg) {
         
         // 2. FREE THE LOCK: Allow the network socket to immediately receive the next frame
         audio_buffer_size = 0;
+        
+        // --- BARESIP BACKPRESSURE FIX: Wake the network thread to pull the next chunk ---
+        pthread_cond_signal(&audio_free_cond);
+        
         pthread_mutex_unlock(&audio_buffer_lock);
 
         // 3. HARDWARE BLOCK: Safely block on DMA without stalling the network
@@ -198,6 +209,7 @@ void *ao_play_thread(void *arg) {
 int disable_audio_output() {
     int ret;
     int ret_val = 0; // Track errors but do not abort
+
     int aoDevID, aoChnID;
     get_audio_output_device_attributes(&aoDevID, &aoChnID);
 
