@@ -153,47 +153,41 @@ void *ao_play_thread(void *arg) {
     int aoDevID, aoChnID;
     get_audio_output_device_attributes(&aoDevID, &aoChnID);
 
+    // Create a local buffer to decouple from the network thread
+    unsigned char local_buffer[DEFAULT_AO_MAX_FRAME_SIZE];
+    uint32_t local_size = 0;
+
     while (TRUE) {
         pthread_mutex_lock(&audio_buffer_lock);
-        
-        // --- PHANTOM WAKEUP FIX ---
         while (audio_buffer_size == 0 && !g_stop_thread) {
             pthread_cond_wait(&audio_data_cond, &audio_buffer_lock);
         }
-
-        // If the thread was woken up by a shutdown broadcast, release the lock and exit
+        
         if (g_stop_thread) {
             pthread_mutex_unlock(&audio_buffer_lock);
             break;
         }
 
-        // --- SIGMASTAR FRAME SEND ---
-        MI_AUDIO_Frame_t stAoSendFrame;
-        memset(&stAoSendFrame, 0, sizeof(MI_AUDIO_Frame_t));
-        stAoSendFrame.u32Len = audio_buffer_size;
-        stAoSendFrame.apVirAddr[0] = audio_buffer;
-        stAoSendFrame.apVirAddr[1] = NULL;
-
-        // --- KERNEL DEADLOCK FIX: Use 200ms timeout instead of -1 (infinite) ---
-        if (MI_AO_SendFrame(aoDevID, aoChnID, &stAoSendFrame, 200) != 0) {
-            pthread_mutex_unlock(&audio_buffer_lock);
-            
-            // --- RACE CONDITION FIX: Do not resurrect hardware during shutdown ---
-            if (g_stop_thread) {
-                break;
-            }
-            
-            // --- TIMEOUT RESET LOOP FIX ---
-            // A 200ms timeout is a natural yield when the DMA ring is full.
-            // Do not violently reinitialize the hardware. Yield and retry the same frame.
-            usleep(10000); 
-            continue;
-        }
-
+        // 1. FAST COPY: Move network data to local memory
+        memcpy(local_buffer, audio_buffer, audio_buffer_size);
+        local_size = audio_buffer_size;
+        
+        // 2. FREE THE LOCK: Allow the network socket to immediately receive the next frame
         audio_buffer_size = 0;
         pthread_mutex_unlock(&audio_buffer_lock);
+
+        // 3. HARDWARE BLOCK: Safely block on DMA without stalling the network
+        MI_AUDIO_Frame_t stAoSendFrame;
+        memset(&stAoSendFrame, 0, sizeof(MI_AUDIO_Frame_t));
+        stAoSendFrame.u32Len = local_size;
+        stAoSendFrame.apVirAddr[0] = local_buffer;
+        stAoSendFrame.apVirAddr[1] = NULL;
+
+        if (MI_AO_SendFrame(aoDevID, aoChnID, &stAoSendFrame, 200) != 0) {
+            if (g_stop_thread) { break; }
+            usleep(10000);
+        }
     }
-    
     return NULL;
 }
 
