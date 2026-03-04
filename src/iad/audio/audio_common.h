@@ -3,6 +3,9 @@
 
 #include "cJSON.h"
 
+#define DEFAULT_AI_DEV_ID 0
+#define DEFAULT_AI_CHN_ID 0
+
 typedef struct {
     cJSON *samplerateItem;
     cJSON *bitwidthItem;
