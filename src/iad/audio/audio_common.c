@@ -73,5 +73,3 @@ AudioInputAttributes get_audio_input_attributes() {
     attrs.usrFrmDepthItem= get_audio_attribute(AUDIO_INPUT, "usrFrmDepth");
     return attrs;
 }
-
-/**
