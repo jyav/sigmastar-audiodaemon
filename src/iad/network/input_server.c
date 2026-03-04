@@ -41,7 +41,6 @@ void handle_audio_input_client(int client_sock) {
     pthread_mutex_unlock(&client_list_lock);
     printf("[INFO] [AI] Input client connected\n");
 }
-}
 
 void *audio_input_server_thread(void *arg) {
     printf("[INFO] [AI] Entering audio_input_server_thread\n");
@@ -69,7 +68,7 @@ void *audio_input_server_thread(void *arg) {
     // Remove orphaned socket files from previous crashes
     unlink(addr.sun_path); 
 
-    if (bind(sockfd, (struct sockaddr*)&addr, sizeof(sa_family_t) + strlen(addr.sun_path)) == -1) {
+    if (bind(sockfd, (struct sockaddr*)&addr, sizeof(addr)) == -1) {
         handle_audio_error(TAG, "bind failed");
         close(sockfd);
         return NULL;
