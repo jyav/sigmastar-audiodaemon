@@ -2,11 +2,12 @@
 #define UTILS_H
 
 // Required headers for thread management and data types
+#include "mi_ao.h"
 #include <pthread.h>
 #include <sys/types.h>      // For ssize_t
 
 // Constants for program tagging and frame duration
-#define PROG_TAG "AO_T31"
+#define PROG_TAG "AO_IAD"
 #define FRAME_DURATION 0.040
 
 /**
@@ -61,7 +62,7 @@ int compute_numPerFrm(int sample_rate);
  * @param str String representation of the bit width.
  * @return Corresponding enum value.
  */
-IMPAudioBitWidth string_to_bitwidth(const char* str);
+MI_AUDIO_BitWidth_e string_to_bitwidth(const char* str);
 
 /**
  * @brief Converts a string representation of sound mode to its enum value.
@@ -69,7 +70,7 @@ IMPAudioBitWidth string_to_bitwidth(const char* str);
  * @param str String representation of the sound mode.
  * @return Corresponding enum value.
  */
-IMPAudioSoundMode string_to_soundmode(const char* str);
+MI_AUDIO_SoundMode_e string_to_soundmode(const char* str);
 
 // Cleans up all resources and prepares for program termination.
 void perform_cleanup(void);
