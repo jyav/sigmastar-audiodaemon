@@ -29,7 +29,10 @@ void handle_control_client(int client_sock) {
     buffer[bytes_received] = '\0';  // Null-terminate the received string
 
     // Try interpreting buffer as an integer for legacy clients
-    int client_request_type = *(int *)buffer;
+    int client_request_type = 0;
+    if (bytes_received >= sizeof(int)) {
+        memcpy(&client_request_type, buffer, sizeof(int));
+    }
 
     if (client_request_type == AUDIO_OUTPUT_REQUEST) {
         pthread_mutex_lock(&audio_buffer_lock);
