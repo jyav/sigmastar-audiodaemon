@@ -154,12 +154,13 @@ printf("[INFO] [AO] Waiting for output client connection\n");
             pthread_mutex_unlock(&audio_buffer_lock);
         }
 
-        // Clear audio buffer after reading ends
+        pthread_mutex_lock(&audio_buffer_lock);
+
+		// Clear audio buffer after reading ends
         memset(audio_buffer, 0, g_ao_max_frame_size);
         audio_buffer_size = 0;
-
-        pthread_mutex_lock(&audio_buffer_lock);
         active_client_sock = -1;
+		
         pthread_cond_broadcast(&audio_data_cond);
         pthread_mutex_unlock(&audio_buffer_lock);
 
