@@ -17,10 +17,10 @@ INCLUDES += -I$(SDK_INC_DIR) \
             -I./build \
             -I$(SDK_INC_DIR)/libwebsockets
 
-CFLAGS += $(INCLUDES)
+override CFLAGS += $(INCLUDES)
 
 ifeq ($(DEBUG), y)
-    CFLAGS += -g
+    override CFLAGS += -g
     STRIPCMD = @echo "Not stripping binary due to DEBUG mode."
 else
     # Fallback to standard strip if not explicitly defined by Buildroot
