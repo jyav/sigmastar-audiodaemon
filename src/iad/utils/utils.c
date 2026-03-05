@@ -67,7 +67,7 @@ void perform_cleanup() {
     disable_audio_output();
 
     config_cleanup();
-    
+
     pthread_mutex_destroy(&audio_buffer_lock);
     pthread_cond_destroy(&audio_data_cond);
     pthread_mutex_destroy(&g_stop_thread_mutex);
@@ -93,9 +93,7 @@ void remove_pid_file() {
 void handle_sigint(int sig) {
     // POSIX strictly forbids complex functions here. 
     // Set the flag and let the threads gracefully exit.
-    pthread_mutex_lock(&g_stop_thread_mutex);
     g_stop_thread = 1;
-    pthread_mutex_unlock(&g_stop_thread_mutex);
 }
 
 /**
