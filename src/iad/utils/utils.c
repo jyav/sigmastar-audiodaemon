@@ -63,19 +63,14 @@ int compute_numPerFrm(int sample_rate) {
  */
 void perform_cleanup() {
 
-    pthread_mutex_lock(&g_stop_thread_mutex);
-    g_stop_thread = 1;
-    pthread_mutex_unlock(&g_stop_thread_mutex);
-
-    pthread_cond_signal(&audio_data_cond);
-
     disable_audio_input();
     disable_audio_output();
 
+    config_cleanup();
+    
     pthread_mutex_destroy(&audio_buffer_lock);
     pthread_cond_destroy(&audio_data_cond);
-    
-    config_cleanup();
+    pthread_mutex_destroy(&g_stop_thread_mutex);
 }
 
 /**

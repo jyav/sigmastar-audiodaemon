@@ -22,13 +22,7 @@ static void handle_audio_error_internal(const char *tag, const char *msg, va_lis
 
     // Print the formatted error message
     vfprintf(stderr, msg, args);
-
-    // If errno is set, append the corresponding system error string.
-    if (errno) {
-        fprintf(stderr, ": %s\n", strerror(errno));
-    } else {
-        fprintf(stderr, "\n");
-    }
+    fprintf(stderr, "\n");
 }
 
 /**

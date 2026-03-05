@@ -261,7 +261,8 @@ cJSON *get_audio_config(void) {
  */
 cJSON *get_network_config(void) {
     pthread_mutex_lock(&config_mutex);
-    cJSON *item = cJSON_GetObjectItemCaseSensitive(config_root, "network");
+    cJSON *audio = cJSON_GetObjectItemCaseSensitive(config_root, "audio");
+    cJSON *item = audio ? cJSON_GetObjectItemCaseSensitive(audio, "network") : NULL;
     pthread_mutex_unlock(&config_mutex);
     return item;
 }
