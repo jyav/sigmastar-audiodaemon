@@ -251,6 +251,7 @@ void config_cleanup(void) {
 cJSON *get_audio_config(void) {
     pthread_mutex_lock(&config_mutex);
     cJSON *item = cJSON_GetObjectItemCaseSensitive(config_root, "audio");
+
     pthread_mutex_unlock(&config_mutex);
     return item;
 }
